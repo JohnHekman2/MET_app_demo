@@ -71,6 +71,8 @@ if "gemini_api_key" not in st.session_state:
     st.session_state.gemini_api_key = st.secrets.get("GEMINI_API_KEY", "")
 if "ai_suggestions" not in st.session_state:
     st.session_state.ai_suggestions = {}
+if "show_ai_columns" not in st.session_state:
+    st.session_state.show_ai_columns = False
 
 # --- Sidebar: inputs and controls --------------------------------------------
 st.sidebar.title("Policy Environmental Impact Scoping")
@@ -198,6 +200,7 @@ if st.sidebar.button("Get AI Suggestions", disabled=not api_key_loaded):
                         "flag": "Error",
                         "explanation": f"API call failed: {e}"
                     }
+        st.session_state.show_ai_columns = True
         st.success("AI suggestions generated!")
         st.rerun()
 
@@ -213,12 +216,29 @@ else:
     st.markdown(
         "For each indicator below, select the impact (Negative / No impact / Positive) and provide an explanation for your judgement.")
 
+    # Determine the columns to display based on whether AI suggestions have been run
+    if st.session_state.show_ai_columns:
+        # Show all 5 columns
+        cols_config = [3, 2, 2, 2, 3]
+        col_names = ["Indicator", "Impact", "Your Explanation", "AI Judgement", "AI Explanation"]
+    else:
+        # Show only the original 3 columns
+        cols_config = [3, 2, 5]
+        col_names = ["Indicator", "Impact", "Explanation"]
+
+    # Display headers
+    cols = st.columns(cols_config)
+    for i, name in enumerate(col_names):
+        with cols[i]:
+            st.write(f"**{name}**")
+
+    # Display rows
     for i, ind in enumerate(st.session_state.render_inds):
         sk = sanitize_key(ind)
         key_imp = f"imp__{sk}"
         key_exp = f"exp__{sk}"
 
-        cols = st.columns([3, 2, 5, 5])
+        cols = st.columns(cols_config)
         with cols[0]:
             st.write(f"**{ind}**")
         with cols[1]:
@@ -226,15 +246,23 @@ else:
                 init_idx = impact_options.index(st.session_state.get(key_imp, "No impact"))
             except ValueError:
                 init_idx = 1
-            cols[1].selectbox(f"Impact {i + 1}", options=impact_options, index=init_idx, key=key_imp)
+            cols[1].selectbox(f"Impact {i + 1}", options=impact_options, index=init_idx, key=key_imp,
+                              label_visibility="collapsed")
         with cols[2]:
-            cols[2].text_area(f"Explanation {i + 1}", value=st.session_state.get(key_exp, ""), key=key_exp, height=90)
-        with cols[3]:
-            # New column for AI suggestions
+            cols[2].text_area(f"Explanation {i + 1}", value=st.session_state.get(key_exp, ""), key=key_exp, height=90,
+                              label_visibility="collapsed")
+
+        # Conditionally render AI columns
+        if st.session_state.show_ai_columns:
             ai_data = st.session_state.ai_suggestions.get(ind, {})
-            ai_flag = ai_data.get('flag', 'No impact')
+            ai_flag = ai_data.get('flag', 'Not Run')
             ai_explanation = ai_data.get('explanation', '')
-            cols[3].text_area(f"AI Suggestion {i + 1} ({ai_flag})", value=ai_explanation, disabled=True, height=90)
+
+            with cols[3]:
+                st.write(f"**{ai_flag}**")
+            with cols[4]:
+                cols[4].text_area(f"AI Suggestion {i + 1}", value=ai_explanation, disabled=True, height=90,
+                                  label_visibility="collapsed")
 
     rows = []
     for ind in st.session_state.render_inds:
@@ -246,7 +274,7 @@ else:
             "Indicator": ind,
             "Impact": st.session_state.get(key_imp, "No impact"),
             "Explanation": st.session_state.get(key_exp, ""),
-            "AI Suggestion": ai_data.get("flag", "Not Run"),
+            "AI Judgement": ai_data.get("flag", "Not Run"),
             "AI Explanation": ai_data.get("explanation", "")
         })
     edited = pd.DataFrame(rows)
